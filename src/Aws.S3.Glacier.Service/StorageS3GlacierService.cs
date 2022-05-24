@@ -31,7 +31,7 @@ namespace Aws.S3.Glacier.Service
                 await File.WriteAllBytesAsync(pathToUpload, archiveToUpload);
                 await _archiveTransferManager.CreateVaultAsync(vaultName);
                 var option = new UploadOptions();
-                option.AccountId = "1242-2456-5067";
+                option.AccountId = _s3Configuration.AccountId;
                 var archive = await _archiveTransferManager.UploadAsync(vaultName, description, pathToUpload);
 
                 return archive.ArchiveId;
@@ -55,8 +55,8 @@ namespace Aws.S3.Glacier.Service
                 using (var client = new AmazonGlacierClient(_s3Configuration.GetRegion()))
                 {
                     string uploadId = await InitiateMultipartUploadAsync(client, vaultName, description, partsize);
-                    partChecksumList = await UploadPartsAsync(@"C:\Users\Leonardo\Downloads\TUTORIAL - MELHORIA ASSINATURA - ABASE.pdf", vaultName,uploadId, partsize, client);
-                    archiveId = await CompleteMPUAsync(@"C:\Users\Leonardo\Downloads\TUTORIAL - MELHORIA ASSINATURA - ABASE.pdf", vaultName, uploadId, client, partChecksumList);
+                    partChecksumList = await UploadPartsAsync(pathToUpload, vaultName,uploadId, partsize, client);
+                    archiveId = await CompleteMPUAsync(pathToUpload, vaultName, uploadId, client, partChecksumList);
                 }
 
                 return archiveId;
@@ -72,8 +72,8 @@ namespace Aws.S3.Glacier.Service
             {
                 var downloadFilePath = Path.GetTempFileName();
                 var options = new DownloadOptions();
-                options.StreamTransferProgress = StorageS3GlacierService.progress;
-                options.AccountId = "1242-2456-5067";
+                options.StreamTransferProgress = Progress;
+                options.AccountId = _s3Configuration.AccountId;
                 await _archiveTransferManager.DownloadAsync(vaultName, archiveId, downloadFilePath, options);
 
                 return await File.ReadAllBytesAsync(downloadFilePath);
@@ -95,11 +95,11 @@ namespace Aws.S3.Glacier.Service
         }
 
         #region Static functions
-        public static async Task<string> InitiateMultipartUploadAsync(AmazonGlacierClient client, string vaultName, string description,long partSize)
+        private async Task<string> InitiateMultipartUploadAsync(AmazonGlacierClient client, string vaultName, string description,long partSize)
         {
             InitiateMultipartUploadRequest initiateMPUrequest = new InitiateMultipartUploadRequest()
             {
-                AccountId = "1242-2456-5067",
+                AccountId = _s3Configuration.AccountId,
                 VaultName = vaultName,
                 PartSize = partSize,
                 ArchiveDescription = description
@@ -110,7 +110,7 @@ namespace Aws.S3.Glacier.Service
             return initiateMPUresponse.UploadId;
         }
 
-        public static async Task<List<string>> UploadPartsAsync(string path, string vaultName, string uploadID, long partSize, AmazonGlacierClient client)
+        private async Task<List<string>> UploadPartsAsync(string path, string vaultName, string uploadID, long partSize, AmazonGlacierClient client)
         {
             List<string> partChecksumList = new List<string>();
             long currentPosition = 0;
@@ -126,7 +126,7 @@ namespace Aws.S3.Glacier.Service
                     partChecksumList.Add(checksum);
                     UploadMultipartPartRequest uploadMPUrequest = new UploadMultipartPartRequest()
                     {
-                        AccountId = "1242-2456-5067",
+                        AccountId = _s3Configuration.AccountId,
                         VaultName = vaultName,
                         Body = uploadPartStream,
                         Checksum = checksum,
@@ -141,7 +141,7 @@ namespace Aws.S3.Glacier.Service
             return partChecksumList;
         }
 
-        public static async Task<string> CompleteMPUAsync(string path, string vaultName, string uploadID, AmazonGlacierClient client, List<string> partChecksumList)
+        private async Task<string> CompleteMPUAsync(string path, string vaultName, string uploadID, AmazonGlacierClient client, List<string> partChecksumList)
         {
             long fileLength = new FileInfo(path).Length;
             CompleteMultipartUploadRequest completeMPUrequest = new CompleteMultipartUploadRequest()
@@ -156,8 +156,8 @@ namespace Aws.S3.Glacier.Service
             return completeMPUresponse.ArchiveId;
         }
 
-        public static int currentPercentage = -1;
-        public static void progress(object sender, StreamTransferProgressArgs args)
+        private int currentPercentage = -1;
+        private void Progress(object sender, StreamTransferProgressArgs args)
         {
             if (args.PercentDone != currentPercentage)
             {
